@@ -51,11 +51,36 @@ public class DistProcess implements Watcher
 			getTasks(); // Install monitoring on any new tasks that will be created.
 									// TODO monitor for worker tasks?
 		}catch(NodeExistsException nee)
-		{ isMaster=false; } // TODO: What else will you need if this was a worker process?
+		{ isMaster=false; 
+		
+		// TODO: What else will you need if this was a worker process?
+		//add worker node 
+		addWorkerNode();
+		
+		
+		} 
 
 		System.out.println("DISTAPP : Role : " + " I will be functioning as " +(isMaster?"master":"worker"));
 	}
 
+	
+	// --------------------------------Worker methods --------------------------------------------------------------------------
+	
+	public void addWorkerNode() {
+		zk.create("/dist03/workers/worker-"+pinfo, "Idle".getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+		System.out.println("DISTAPP : Added worker as node");
+	}
+	
+	
+	
+	
+	
+	
+	
+	//--------------------------------Master methods ---------------------------------------------------------------------------
+	
+	
+	
 	// Master fetching task znodes...
 	void getTasks()
 	{
@@ -158,6 +183,6 @@ public class DistProcess implements Watcher
 		dt.startProcess();
 
 		//Replace this with an approach that will make sure that the process is up and running forever.
-		Thread.sleep(10000); 
+		Thread.sleep(100000); 
 	}
 }
