@@ -11,7 +11,7 @@ fi
 # TODO Include your ZooKeeper connection string here. Make sure there are no spaces.
 # 	Replace with your server names and client ports.
 #export ZKSERVER=lab1.cs.mcgill.ca:21803,lab2.cs.mcgill.ca:21803,lab3.cs.mcgill.ca:21803
-export ZKSERVER=lab2-22.cs.mcgill.ca:21803,lab2-33.cs.mcgill.ca:21803,lab2-44.cs.mcgill.ca:21803
+export ZKSERVER=lab2-30.cs.mcgill.ca:21803,lab2-31.cs.mcgill.ca:21803,lab2-32.cs.mcgill.ca:21803
 
 
 java -cp $CLASSPATH:../task:.: DistClient "$@"
