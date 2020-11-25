@@ -94,12 +94,12 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		byte[] taskSerial = zk.getData("/dist03/tasks/"+task, false, null);
 	
 		// Filter out and go over only the newly created task znodes.	
-		// if data not empty
+		// if data not empty	
 		if (taskSerial != null && taskSerial.length != 0) {
 			zk.delete("/dist03/workers/"+worker, -1);
 			zk.create("/dist03/assign/"+worker, worker.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 			zk.setData("/dist03/tasks/"+task, null, -1);
-			zk.create("/dist03/assign/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 		}
 	}
 
@@ -164,7 +164,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 					// wait for available worker
 					List<String> workersList;
 					while((workersList = zk.getChildren("/dist03/workers", false)).isEmpty()) { }
-					String worker = workersList.get(0);
+					String worker = workersList.get(0);	
 					new Thread(() -> {
 						try {	
 							assignWorkerTask(worker, c);
@@ -184,7 +184,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 					List<String> tasksList = zk.getChildren("/dist03/assign/"+c, false);
 					
 					if (tasksList != null && !tasksList.isEmpty()) {
-						// get the data using an async version of the API.	
+						// get the data using an async version of the API.
 						byte[] taskSerial = zk.getData("/dist03/assign/"+c+"/"+tasksList.get(0), false, null);
 							
 						// Re-construct our task object.
@@ -200,11 +200,11 @@ implements Watcher, AsyncCallback.ChildrenCallback
 						ObjectOutputStream oos = new ObjectOutputStream(bos);
 						oos.writeObject(dt); oos.flush();
 						taskSerial = bos.toByteArray();
-
+							
 						// Store it inside the result node.
 						zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 						//zk.create("/distXX/tasks/"+c+"/result", ("Hello from "+pinfo).getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-						zk.create("/dist03/workers/"+pinfo, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+						zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 					}
 				}
 
