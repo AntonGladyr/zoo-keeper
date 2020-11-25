@@ -7,3 +7,4 @@
 *.jar
 .project
 .classpath
+.vscode/settings.json

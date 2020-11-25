@@ -6,6 +6,8 @@ import java.io.*;
 //To get the process id.
 //import java.lang.management.*;
 
+import zk.task.*;
+
 import org.apache.zookeeper.*;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.KeeperException.*;
