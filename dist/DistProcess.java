@@ -67,8 +67,14 @@ public class DistProcess implements Watcher
 	// --------------------------------Worker methods --------------------------------------------------------------------------
 	
 	public void addWorkerNode() {
-		zk.create("/dist03/workers/worker-"+pinfo, "Idle".getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-		System.out.println("DISTAPP : Added worker as node");
+		
+		try
+		{
+			zk.create("/dist03/workers/worker-"+pinfo, "Idle".getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+			System.out.println("DISTAPP : Added worker as node");
+		}
+		catch(NodeExistsException nee){System.out.println(nee);}
+		catch(KeeperException ke){System.out.println(ke);}
 	}
 	
 	
