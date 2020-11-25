@@ -13,9 +13,8 @@ import org.apache.zookeeper.data.*;
 import org.apache.zookeeper.KeeperException.Code;
 
 // You may have to add other interfaces such as for threading, etc., as needed.
-public class DistClient implements Watcher
-												, AsyncCallback.StatCallback
-												, AsyncCallback.DataCallback
+public class DistClient
+implements Watcher, AsyncCallback.StatCallback, AsyncCallback.DataCallback
 {
 	ZooKeeper zk;
 	String zkServer, taskNodeName;

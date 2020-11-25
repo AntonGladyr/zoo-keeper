@@ -26,8 +26,8 @@ import org.apache.zookeeper.KeeperException.Code;
 //		you manage the code more modularly.
 //	REMEMBER !! ZK client library is single thread - Watches & CallBacks should not be used for time consuming tasks.
 //		Ideally, Watches & CallBacks should only be used to assign the "work" to a separate thread inside your program.
-public class DistProcess implements Watcher
-																		, AsyncCallback.ChildrenCallback
+public class DistProcess
+implements Watcher, AsyncCallback.ChildrenCallback
 {
 	ZooKeeper zk;
 	String zkServer, pinfo;
@@ -49,9 +49,17 @@ public class DistProcess implements Watcher
 			runForMaster();	// See if you can become the master (i.e, no other master exists)
 			isMaster=true;
 			getTasks(); // Install monitoring on any new tasks that will be created.
-									// TODO monitor for worker tasks?
 		}catch(NodeExistsException nee)
-		{ isMaster=false; } // TODO: What else will you need if this was a worker process?
+		{
+			isMaster=false;
+			try
+			{
+				// What else will you need if this was a worker process?
+				addWorker();
+				// monitor for worker tasks
+				getAssignedWorkers();
+			} catch(NodeExistsException nee_) { }
+		}
 
 		System.out.println("DISTAPP : Role : " + " I will be functioning as " +(isMaster?"master":"worker"));
 	}
@@ -62,12 +70,37 @@ public class DistProcess implements Watcher
 		zk.getChildren("/dist03/tasks", this, this, null);  
 	}
 
+	// Workers fetch assigned znodes...
+	void getAssignedWorkers()
+	{
+		zk.getChildren("/dist03/assign", this, this, null);
+	}
+
 	// Try to become the master.
 	void runForMaster() throws UnknownHostException, KeeperException, InterruptedException
 	{
 		//Try to create an ephemeral node to be the master, put the hostname and pid of this process as the data.
 		// This is an example of Synchronous API invocation as the function waits for the execution and no callback is involved..
 		zk.create("/dist03/master", pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+	}
+
+	void addWorker() throws UnknownHostException, KeeperException, InterruptedException
+	{
+		zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+	}
+
+	void assignWorkerTask(String worker, String task) throws UnknownHostException, KeeperException, InterruptedException
+	{
+		byte[] taskSerial = zk.getData("/dist03/tasks/"+task, false, null);
+	
+		// Filter out and go over only the newly created task znodes.	
+		// if data not empty
+		if (taskSerial != null && taskSerial.length != 0) {
+			zk.delete("/dist03/workers/"+worker, -1);
+			zk.create("/dist03/assign/"+worker, worker.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+			zk.setData("/dist03/tasks/"+task, null, -1);
+			zk.create("/dist03/assign/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+		}
 	}
 
 	public void process(WatchedEvent e)
@@ -84,11 +117,19 @@ public class DistProcess implements Watcher
 
 		System.out.println("DISTAPP : Event received : " + e);
 		// Master should be notified if any new znodes are added to tasks.
-		if(e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist03/tasks"))
+		if(isMaster && e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist03/tasks"))
 		{
 			// There has been changes to the children of the node.
 			// We are going to re-install the Watch as well as request for the list of the children.
 			getTasks();
+		}
+
+		// Worker should be notified if any new znodes are added to asgin node.
+		if(!isMaster && e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist03/assign"))
+		{
+			// There has been changes to the children of the node.
+			// We are going to re-install the Watch as well as request for the list of the children.
+			getAssignedWorkers();
 		}
 	}
 
@@ -117,30 +158,57 @@ public class DistProcess implements Watcher
 			System.out.println(c);
 			try
 			{
-				//TODO There is quite a bit of worker specific activities here,
-				// that should be moved done by a process function as the worker.
+				if (isMaster) {
+					// master process
+					
+					// wait for available worker
+					List<String> workersList;
+					while((workersList = zk.getChildren("/dist03/workers", false)).isEmpty()) { }
+					String worker = workersList.get(0);
+					new Thread(() -> {
+						try {	
+							assignWorkerTask(worker, c);
+						}
+						catch (UnknownHostException uhe) { }
+						catch (KeeperException ke) { }
+						catch (InterruptedException ie) { }
+					}).start();
+				}
+				else {
+					// worker process
+					// There is quite a bit of worker specific activities here,
+					// that should be moved done by a process function as the worker.
+					
+					if (pinfo != c) continue;
+					
+					List<String> tasksList = zk.getChildren("/dist03/assign/"+c, false);
+					
+					if (tasksList != null && !tasksList.isEmpty()) {
+						// get the data using an async version of the API.	
+						byte[] taskSerial = zk.getData("/dist03/assign/"+c+"/"+tasksList.get(0), false, null);
+							
+						// Re-construct our task object.
+						ByteArrayInputStream bis = new ByteArrayInputStream(taskSerial);
+						ObjectInput in = new ObjectInputStream(bis);
+						DistTask dt = (DistTask) in.readObject();
 
-				//TODO!! This is not a good approach, you should get the data using an async version of the API.
-				byte[] taskSerial = zk.getData("/dist03/tasks/"+c, false, null);
+						//Execute the task.
+						dt.compute();
+						
+						// Serialize our Task object back to a byte array!
+						ByteArrayOutputStream bos = new ByteArrayOutputStream();
+						ObjectOutputStream oos = new ObjectOutputStream(bos);
+						oos.writeObject(dt); oos.flush();
+						taskSerial = bos.toByteArray();
 
-				// Re-construct our task object.
-				ByteArrayInputStream bis = new ByteArrayInputStream(taskSerial);
-				ObjectInput in = new ObjectInputStream(bis);
-				DistTask dt = (DistTask) in.readObject();
+						// Store it inside the result node.
+						zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+						//zk.create("/distXX/tasks/"+c+"/result", ("Hello from "+pinfo).getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+						zk.create("/dist03/workers/"+pinfo, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+					}
+				}
 
-				//Execute the task.
-				//TODO: Again, time consuming stuff. Should be done by some other thread and not inside a callback!
-				dt.compute();
-				
-				// Serialize our Task object back to a byte array!
-				ByteArrayOutputStream bos = new ByteArrayOutputStream();
-				ObjectOutputStream oos = new ObjectOutputStream(bos);
-				oos.writeObject(dt); oos.flush();
-				taskSerial = bos.toByteArray();
 
-				// Store it inside the result node.
-				zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-				//zk.create("/distXX/tasks/"+c+"/result", ("Hello from "+pinfo).getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 			}
 			catch(NodeExistsException nee){System.out.println(nee);}
 			catch(KeeperException ke){System.out.println(ke);}
@@ -158,6 +226,7 @@ public class DistProcess implements Watcher
 		dt.startProcess();
 
 		//Replace this with an approach that will make sure that the process is up and running forever.
-		Thread.sleep(10000); 
+		//Thread.sleep(10000);
+		while (true) { }
 	}
 }
