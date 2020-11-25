@@ -96,10 +96,10 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		// Filter out and go over only the newly created task znodes.	
 		// if data not empty	
 		if (taskSerial != null && taskSerial.length != 0) {
-			zk.delete("/dist03/workers/"+worker, -1);
+			zk.delete("/dist03/workers/"+worker, -1);	
 			zk.create("/dist03/assign/"+worker, worker.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-			zk.setData("/dist03/tasks/"+task, null, -1);
-			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+			zk.setData("/dist03/tasks/"+task, null, -1);	
+			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);	
 		}
 	}
 
@@ -177,35 +177,36 @@ implements Watcher, AsyncCallback.ChildrenCallback
 				else {
 					// worker process
 					// There is quite a bit of worker specific activities here,
-					// that should be moved done by a process function as the worker.
+					// that should be moved done by a process function as the worker.	
 					
-					if (pinfo != c) continue;
+					if (!pinfo.equals(c)) continue;	
 					
 					List<String> tasksList = zk.getChildren("/dist03/assign/"+c, false);
-					
+
 					if (tasksList != null && !tasksList.isEmpty()) {
+						System.out.println("OK!");
 						// get the data using an async version of the API.
-						byte[] taskSerial = zk.getData("/dist03/assign/"+c+"/"+tasksList.get(0), false, null);
+						byte[] taskSerial = zk.getData("/dist03/assign/"+c+"/"+tasksList.get(0), false, null);	
 							
 						// Re-construct our task object.
 						ByteArrayInputStream bis = new ByteArrayInputStream(taskSerial);
 						ObjectInput in = new ObjectInputStream(bis);
-						DistTask dt = (DistTask) in.readObject();
+						DistTask dt = (DistTask) in.readObject();	
 
 						//Execute the task.
-						dt.compute();
+						dt.compute();	
 						
 						// Serialize our Task object back to a byte array!
 						ByteArrayOutputStream bos = new ByteArrayOutputStream();
 						ObjectOutputStream oos = new ObjectOutputStream(bos);
 						oos.writeObject(dt); oos.flush();
-						taskSerial = bos.toByteArray();
+						taskSerial = bos.toByteArray();	
 							
 						// Store it inside the result node.
 						zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 						//zk.create("/distXX/tasks/"+c+"/result", ("Hello from "+pinfo).getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 						zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-					}
+					}	
 				}
 
 
