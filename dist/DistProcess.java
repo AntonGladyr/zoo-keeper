@@ -75,6 +75,7 @@ public class DistProcess implements Watcher
 		}
 		catch(NodeExistsException nee){System.out.println(nee);}
 		catch(KeeperException ke){System.out.println(ke);}
+		catch(InterruptedException ie){System.out.println(ie);}
 	}
 	
 	
