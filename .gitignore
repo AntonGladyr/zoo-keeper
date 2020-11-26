@@ -4,4 +4,8 @@
 # Log file
 *.log
 
+# Other
 *.jar
+/bin/
+.classpath
+.project
