@@ -97,7 +97,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		// if data not empty	
 		if (taskSerial != null && taskSerial.length != 0) {
 			zk.delete("/dist03/workers/"+worker, -1);	
-			zk.create("/dist03/assign/"+worker, worker.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+			zk.create("/dist03/assign/"+worker, worker.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 			zk.setData("/dist03/tasks/"+task, null, -1);	
 			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);	
 		}
