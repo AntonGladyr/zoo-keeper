@@ -57,7 +57,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 				// What else will you need if this was a worker process?
 				addWorker();
 				// monitor for worker tasks
-				getAssignedWorkers();
+				getAssignedWorkerTasks();
 			} catch(NodeExistsException nee_) { }
 		}
 
@@ -71,9 +71,9 @@ implements Watcher, AsyncCallback.ChildrenCallback
 	}
 
 	// Workers fetch assigned znodes...
-	void getAssignedWorkers()
+	void getAssignedWorkerTasks()
 	{
-		zk.getChildren("/dist03/assign", this, this, null);
+		zk.getChildren("/dist03/assign/"+pinfo, this, this, null);
 	}
 
 	// Try to become the master.
@@ -87,6 +87,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 	void addWorker() throws UnknownHostException, KeeperException, InterruptedException
 	{
 		zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+		zk.create("/dist03/assign/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 	}
 
 	void assignWorkerTask(String worker, String task) throws UnknownHostException, KeeperException, InterruptedException
@@ -97,9 +98,9 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		// if data not empty	
 		if (taskSerial != null && taskSerial.length != 0) {
 			zk.delete("/dist03/workers/"+worker, -1);	
-			zk.create("/dist03/assign/"+worker, worker.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+			//zk.create("/dist03/assign/"+worker, worker.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);	
 			zk.setData("/dist03/tasks/"+task, null, -1);	
-			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);	
+			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);	
 		}
 	}
 
@@ -125,11 +126,11 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		}
 
 		// Worker should be notified if any new znodes are added to asgin node.
-		if(!isMaster && e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist03/assign"))
+		if(!isMaster && e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist03/assign/"+pinfo))
 		{
 			// There has been changes to the children of the node.
 			// We are going to re-install the Watch as well as request for the list of the children.
-			getAssignedWorkers();
+			getAssignedWorkerTasks();
 		}
 	}
 
@@ -163,7 +164,9 @@ implements Watcher, AsyncCallback.ChildrenCallback
 					
 					// wait for available worker
 					List<String> workersList;
+					
 					while((workersList = zk.getChildren("/dist03/workers", false)).isEmpty()) { }
+					
 					String worker = workersList.get(0);	
 					new Thread(() -> {
 						try {	
@@ -179,14 +182,21 @@ implements Watcher, AsyncCallback.ChildrenCallback
 					// There is quite a bit of worker specific activities here,
 					// that should be moved done by a process function as the worker.	
 					
-					if (!pinfo.equals(c)) continue;	
+					// if (!pinfo.equals(c)) continue;
 					
-					List<String> tasksList = zk.getChildren("/dist03/assign/"+c, false);
+					List<String> tasksList = null;
+					try {	
+						tasksList = zk.getChildren("/dist03/assign/"+pinfo, false);
+					}
+					
+					catch (KeeperException ke) { System.out.println("EXCEPT: "+ke); continue; }
+					
+					System.out.println(tasksList.get(0));
 
 					if (tasksList != null && !tasksList.isEmpty()) {
 						System.out.println("OK!");
 						// get the data using an async version of the API.
-						byte[] taskSerial = zk.getData("/dist03/assign/"+c+"/"+tasksList.get(0), false, null);	
+						byte[] taskSerial = zk.getData("/dist03/assign/"+pinfo+"/"+c, false, null);	
 							
 						// Re-construct our task object.
 						ByteArrayInputStream bis = new ByteArrayInputStream(taskSerial);
@@ -206,7 +216,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 						zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 						//zk.create("/distXX/tasks/"+c+"/result", ("Hello from "+pinfo).getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 						zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-					}	
+					}
 				}
 
 
