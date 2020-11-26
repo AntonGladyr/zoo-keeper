@@ -44,36 +44,50 @@ implements Watcher, AsyncCallback.ChildrenCallback
 	void startProcess() throws IOException, UnknownHostException, KeeperException, InterruptedException
 	{
 		zk = new ZooKeeper(zkServer, 1000, this); //connect to ZK.
+		
+		// Try to become the master
 		try
 		{
 			runForMaster();	// See if you can become the master (i.e, no other master exists)
 			isMaster=true;
-			getTasks(); // Install monitoring on any new tasks that will be created.
-		}catch(NodeExistsException nee)
+			getTasks();     // Install monitoring on any new tasks that will be created
+			getWorkers();   // Install monitoring on any new workers that become available
+		}
+		// Upon failure becoming the master, become a worker instead
+		catch(NodeExistsException nee)
 		{
 			isMaster=false;
 			try
 			{
-				// What else will you need if this was a worker process?
-				addWorker();
-				// monitor for worker tasks
-				getAssignedWorkers();
-			} catch(NodeExistsException nee_) { }
+				addWorker();      // Register as a worker
+				getAssignments(); // Install monitoring on task assignments for this worker
+			}
+			catch(NodeExistsException nee_)
+			{
+				System.out.println("DISTAPP : An error occured while registering as a worker"));
+				System.out.println(nee);
+			}
 		}
 
 		System.out.println("DISTAPP : Role : " + " I will be functioning as " +(isMaster?"master":"worker"));
 	}
 
-	// Master fetching task znodes...
+	// Master gets updates for new task znodes
 	void getTasks()
 	{
-		zk.getChildren("/dist03/tasks", this, this, null);  
+		zk.getChildren("/dist03/tasks", this, this, "tasks");  
+	}
+	
+	// Master gets updates for new worker znodes
+	void getWorkers()
+	{
+		zk.getChildren("/dist03/workers", this, this, "workers");
 	}
 
-	// Workers fetch assigned znodes...
-	void getAssignedWorkers()
+	// Workers gets updates for new assignment znodes
+	void getAssignments()
 	{
-		zk.getChildren("/dist03/assign", this, this, null);
+		zk.getChildren("/dist03/assign/"+pinfo, this, this, "assign");
 	}
 
 	// Try to become the master.
@@ -84,11 +98,13 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		zk.create("/dist03/master", pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 	}
 
+	// Creates an ephemeral node for this worker indicating that the worker is available for assignment
 	void addWorker() throws UnknownHostException, KeeperException, InterruptedException
 	{
-		zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+		zk.create("/dist03/workers/"+pinfo, null, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 	}
 
+	// TODO remove after implementing assignTask()
 	void assignWorkerTask(String worker, String task) throws UnknownHostException, KeeperException, InterruptedException
 	{
 		byte[] taskSerial = zk.getData("/dist03/tasks/"+task, false, null);
@@ -116,24 +132,27 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		//   does the time consuming "work" and notify that thread from here.
 
 		System.out.println("DISTAPP : Event received : " + e);
+		
 		// Master should be notified if any new znodes are added to tasks.
 		if(isMaster && e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist03/tasks"))
 		{
+			System.out.println("DISTAPP : Processing event: tasks watch triggered");
 			// There has been changes to the children of the node.
 			// We are going to re-install the Watch as well as request for the list of the children.
 			getTasks();
 		}
 
-		// Worker should be notified if any new znodes are added to asgin node.
-		if(!isMaster && e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist03/assign"))
+		// Worker should be notified if any new znodes are added to its assign node.
+		if(!isMaster && e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist03/assign/"+pinfo))
 		{
+			System.out.println("DISTAPP : Processing event: assignment watch triggered");
 			// There has been changes to the children of the node.
 			// We are going to re-install the Watch as well as request for the list of the children.
-			getAssignedWorkers();
+			getAssignments();
 		}
 	}
 
-	//Asynchronous callback that is invoked by the zk.getChildren request.
+	// Asynchronous callback that is invoked by the zk.getChildren request.
 	public void processResult(int rc, String path, Object ctx, List<String> children)
 	{
 
@@ -152,32 +171,60 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		//		Also have a mechanism to assign these tasks to a "Worker" process.
 		//		The worker must invoke the "compute" function of the Task send by the client.
 		//What to do if you do not have a free worker process?
+		
 		System.out.println("DISTAPP : processResult : " + rc + ":" + path + ":" + ctx);
+		
+		// Convert the context to a string
+		String context = (String) ctx;
+		
 		for(String c: children)
 		{
 			System.out.println(c);
 			try
 			{
 				if (isMaster) {
-					// master process
+					// Master process
 					
-					// wait for available worker
-					List<String> workersList;
-					while((workersList = zk.getChildren("/dist03/workers", false)).isEmpty()) { }
-					String worker = workersList.get(0);	
-					new Thread(() -> {
-						try {	
-							assignWorkerTask(worker, c);
+					// The master may receive a task
+					if (context.equals("tasks"))
+					{
+						// Check whether this task is in progress
+						List<String> taskChildren = zk.getChildren("/dist03/tasks", false);
+						boolean inProgress = false;
+						for (String child : taskChildren) if (child.equals("in-progress")) inProgress = true;
+						
+						// If the task is not in progress, search for a worker to which to assign the task
+						if (!inProgress)
+						{
+							System.out.println("DISTAPP : processing new task : " + c);
+							
+							// Check if there are any available workers
+							List<String> workers = zk.getChildren("/dist03/workers", false);
+							if (workers.size() > 0)
+							{
+								// If a worker is available, assign the task to it
+								String worker = workers.get(0);
+								System.out.println("DISTAPP : assigning task " + c + " to worker " + worker);
+								assignTask(worker, c);
+							}
+							// Otherwise, ignore the task for now
 						}
-						catch (UnknownHostException uhe) { }
-						catch (KeeperException ke) { }
-						catch (InterruptedException ie) { }
-					}).start();
+					}
+					// The master may receive a worker
+					else if (context.equals("workers"))
+					{
+						// TODO Search for a task to assign to this worker
+					}
 				}
 				else {
-					// worker process
+					// Worker process
 					// There is quite a bit of worker specific activities here,
-					// that should be moved done by a process function as the worker.	
+					// that should be moved done by a process function as the worker.
+					
+					
+					// TODO edit this section to match our new design
+					// Especially, run dt.compute() in a new thread
+					
 					
 					if (!pinfo.equals(c)) continue;	
 					
@@ -217,6 +264,16 @@ implements Watcher, AsyncCallback.ChildrenCallback
 			catch(IOException io){System.out.println(io);}
 			catch(ClassNotFoundException cne){System.out.println(cne);}
 		}
+	}
+	
+	// Assigns a task to the given worker
+	private void assignTask(String worker, String task)
+	{
+		// TODO
+		// It will remove this znode from " workers ", to represent that the worker is no longer available, and will assign the
+		// task to this worker by creating a znode for the worker under " assign ", and a znode under this one which is
+		// a copy of the task znode. It will also flag the task as in-progress by giving it an " in-progress " child (to the
+		// copy that is under " tasks ").
 	}
 
 	public static void main(String args[]) throws Exception
