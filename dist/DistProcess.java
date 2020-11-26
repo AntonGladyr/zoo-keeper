@@ -15,7 +15,7 @@ import org.apache.zookeeper.data.*;
 import org.apache.zookeeper.KeeperException.Code;
 
 // TODO
-// Replace XX with your group number.
+// Done: Replace XX with your group number.
 // You may have to add other interfaces such as for threading, etc., as needed.
 // This class will contain the logic for both your master process as well as the worker processes.
 //  Make sure that the callbacks and watch do not conflict between your master's logic and worker's logic.
@@ -204,7 +204,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 							
 						// Store it inside the result node.
 						zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-						//zk.create("/distXX/tasks/"+c+"/result", ("Hello from "+pinfo).getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+						//zk.create("/dist03/tasks/"+c+"/result", ("Hello from "+pinfo).getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 						zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 					}	
 				}
