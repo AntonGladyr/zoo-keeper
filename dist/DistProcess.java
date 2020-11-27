@@ -258,9 +258,11 @@ implements Watcher, AsyncCallback.ChildrenCallback
 						System.out.println("DISTAPP : received new task assignment : " + task);
 						
 						// Execute the expensive computation in a new thread
-	                    new Thread(() -> {
+	                    Thread workerJob = new Thread(() -> {
 	                    	try
 	                    	{
+	    						System.out.println("DISTAPP : ["+task+"] reading task object");
+	                    		
 	                    		// Get the data for the task
 								byte[] taskSerial = zk.getData("/dist03/assign/"+pinfo+"/"+c, false, null);
 								
@@ -268,8 +270,13 @@ implements Watcher, AsyncCallback.ChildrenCallback
 								ByteArrayInputStream bis = new ByteArrayInputStream(taskSerial);
 								ObjectInput in = new ObjectInputStream(bis);
 								DistTask dt = (DistTask) in.readObject();
+								
+	    						System.out.println("DISTAPP : ["+task+"] starting computation...");
 		                    	
 		                    	dt.compute();
+
+	    						System.out.println("DISTAPP : ["+task+"] finished computation");
+	    						System.out.println("DISTAPP : ["+task+"] publishing result");
 		                    	
 		                    	// Serialize our Task object back to a byte array!
 								ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -280,14 +287,20 @@ implements Watcher, AsyncCallback.ChildrenCallback
 								// Store it inside the result node.
 								zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 								
+	    						System.out.println("DISTAPP : ["+task+"] result published, starting cleanup");
+								
 								// Delete the task assignment
 								zk.delete("/dist03/assign/"+pinfo+"/"+task, -1);
 
 								// Re-add this worker to the list of available workers
 								zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+								
+	    						System.out.println("DISTAPP : ["+task+"] cleanup finished, worker is available again");
 	                    	}
 	                    	catch(Exception e){System.out.println(e);}
                         });
+	                    
+	                    workerJob.start();
 					}
 				}
 
