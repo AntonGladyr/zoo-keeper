@@ -297,7 +297,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 	}
 	
 	// Returns whether a given task is currently in progress
-	private boolean taskIsInProgress(String task)
+	private boolean taskIsInProgress(String task) throws UnknownHostException, KeeperException, InterruptedException
 	{
 		List<String> taskChildren = zk.getChildren("/dist03/tasks/"+task, false);
 		
