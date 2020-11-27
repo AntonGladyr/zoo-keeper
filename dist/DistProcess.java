@@ -150,6 +150,15 @@ implements Watcher, AsyncCallback.ChildrenCallback
 			// We are going to re-install the Watch as well as request for the list of the children.
 			getTasks();
 		}
+		
+		// Master should be notified if any new znodes are added to workers.
+		if(isMaster && e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist03/workers"))
+		{
+			System.out.println("DISTAPP : Processing event: workers watch triggered");
+			// There has been changes to the children of the node.
+			// We are going to re-install the Watch as well as request for the list of the children.
+			getWorkers();
+		}
 
 		// Worker should be notified if any new znodes are added to its assign node.
 		if(!isMaster && e.getType() == Watcher.Event.EventType.NodeChildrenChanged && e.getPath().equals("/dist03/assign/"+pinfo))
