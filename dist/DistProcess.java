@@ -102,6 +102,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 	void addWorker() throws UnknownHostException, KeeperException, InterruptedException
 	{
 		zk.create("/dist03/workers/"+pinfo, null, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+		zk.create("/dist03/assign/"+pinfo, null, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 	}
 
 	// Assigns a task to the given worker
@@ -118,7 +119,6 @@ implements Watcher, AsyncCallback.ChildrenCallback
 			zk.delete("/dist03/workers/"+worker, -1);
 			
 			// Create an assignment node for the worker's new task
-			zk.create("/dist03/assign/"+worker, null, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 			
 			// Mark the node as in-progress under "tasks"
@@ -282,7 +282,6 @@ implements Watcher, AsyncCallback.ChildrenCallback
 								
 								// Delete the task assignment
 								zk.delete("/dist03/assign/"+pinfo+"/"+task, -1);
-								zk.delete("/dist03/assign/"+pinfo, -1);
 
 								// Re-add this worker to the list of available workers
 								zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
