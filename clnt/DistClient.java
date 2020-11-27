@@ -142,6 +142,7 @@ implements Watcher, AsyncCallback.StatCallback, AsyncCallback.DataCallback
 
 		// Cleanup, we do not need our task and result nodes anymore.
 		zk.delete(taskNodeName+"/result", -1, null, null);
+		zk.delete(taskNodeName+"/in-progress", -1, null, null);
 		zk.delete(taskNodeName, -1, null, null);
 
 		// Free the main thread to go ahead and terminate.
