@@ -64,7 +64,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 			}
 			catch(NodeExistsException nee_)
 			{
-				System.out.println("DISTAPP : An error occured while registering as a worker"));
+				System.out.println("DISTAPP : An error occured while registering as a worker");
 				System.out.println(nee);
 			}
 		}
@@ -257,43 +257,42 @@ implements Watcher, AsyncCallback.ChildrenCallback
 						
 						// Execute the expensive computation in a new thread
 	                    new Thread(() -> {
-	                    	
-	                    	// Get the data for the task
-							byte[] taskSerial = zk.getData("/dist03/assign/"+pinfo+"/"+c, false, null);
-							
-							// Re-construct our task object
-							ByteArrayInputStream bis = new ByteArrayInputStream(taskSerial);
-							ObjectInput in = new ObjectInputStream(bis);
-							DistTask dt = (DistTask) in.readObject();
-	                    	
-	                    	dt.compute();
-	                    	
-	                    	// Serialize our Task object back to a byte array!
-							ByteArrayOutputStream bos = new ByteArrayOutputStream();
-							ObjectOutputStream oos = new ObjectOutputStream(bos);
-							oos.writeObject(dt); oos.flush();
-							taskSerial = bos.toByteArray();	
+	                    	try
+	                    	{
+	                    		// Get the data for the task
+								byte[] taskSerial = zk.getData("/dist03/assign/"+pinfo+"/"+c, false, null);
 								
-							// Store it inside the result node.
-							zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-							
-							// Delete the task assignment
-							zk.delete("/dist03/assign/"+pinfo+"/"+task, -1);
-							zk.delete("/dist03/assign/"+pinfo, -1);
+								// Re-construct our task object
+								ByteArrayInputStream bis = new ByteArrayInputStream(taskSerial);
+								ObjectInput in = new ObjectInputStream(bis);
+								DistTask dt = (DistTask) in.readObject();
+		                    	
+		                    	dt.compute();
+		                    	
+		                    	// Serialize our Task object back to a byte array!
+								ByteArrayOutputStream bos = new ByteArrayOutputStream();
+								ObjectOutputStream oos = new ObjectOutputStream(bos);
+								oos.writeObject(dt); oos.flush();
+								taskSerial = bos.toByteArray();	
+									
+								// Store it inside the result node.
+								zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+								
+								// Delete the task assignment
+								zk.delete("/dist03/assign/"+pinfo+"/"+task, -1);
+								zk.delete("/dist03/assign/"+pinfo, -1);
 
-							// Re-add this worker to the list of available workers
-							zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+								// Re-add this worker to the list of available workers
+								zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+	                    	}
+	                    	catch(Exception e){System.out.println(e);}
                         });
 					}
 				}
 
 
 			}
-			catch(NodeExistsException nee){System.out.println(nee);}
-			catch(KeeperException ke){System.out.println(ke);}
-			catch(InterruptedException ie){System.out.println(ie);}
-			catch(IOException io){System.out.println(io);}
-			catch(ClassNotFoundException cne){System.out.println(cne);}
+			catch(Exception e){System.out.println(e);}
 		}
 	}
 	
