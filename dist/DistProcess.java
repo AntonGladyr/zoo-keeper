@@ -104,18 +104,27 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		zk.create("/dist03/workers/"+pinfo, null, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 	}
 
-	// TODO remove after implementing assignTask()
+	// Assigns a task to the given worker
 	void assignWorkerTask(String worker, String task) throws UnknownHostException, KeeperException, InterruptedException
 	{
+		System.out.println("DISTAPP : assigning task : " + task + " to worker " + worker);
+		
 		byte[] taskSerial = zk.getData("/dist03/tasks/"+task, false, null);
 	
-		// Filter out and go over only the newly created task znodes.	
 		// if data not empty	
 		if (taskSerial != null && taskSerial.length != 0) {
-			zk.delete("/dist03/workers/"+worker, -1);	
-			zk.create("/dist03/assign/"+worker, worker.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-			zk.setData("/dist03/tasks/"+task, null, -1);	
-			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);	
+			
+			// Delete the node indicating that the worker is free
+			zk.delete("/dist03/workers/"+worker, -1);
+			
+			// Create an assignment node for the worker's new task
+			zk.create("/dist03/assign/"+worker, null, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+			
+			// Mark the node as in-progress under "tasks"
+			zk.create("/dist03/tasks/"+task, "in-progress".getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+			
+			System.out.println("DISTAPP : task assigned");
 		}
 	}
 
@@ -188,15 +197,13 @@ implements Watcher, AsyncCallback.ChildrenCallback
 					// The master may receive a task
 					if (context.equals("tasks"))
 					{
-						// Check whether this task is in progress
-						List<String> taskChildren = zk.getChildren("/dist03/tasks", false);
-						boolean inProgress = false;
-						for (String child : taskChildren) if (child.equals("in-progress")) inProgress = true;
+						String task = c;
 						
+						// Check whether this task is in progress
 						// If the task is not in progress, search for a worker to which to assign the task
-						if (!inProgress)
+						if (!taskIsInProgress(task))
 						{
-							System.out.println("DISTAPP : processing new task : " + c);
+							System.out.println("DISTAPP : processing new task : " + task);
 							
 							// Check if there are any available workers
 							List<String> workers = zk.getChildren("/dist03/workers", false);
@@ -204,8 +211,8 @@ implements Watcher, AsyncCallback.ChildrenCallback
 							{
 								// If a worker is available, assign the task to it
 								String worker = workers.get(0);
-								System.out.println("DISTAPP : assigning task " + c + " to worker " + worker);
-								assignTask(worker, c);
+								System.out.println("DISTAPP : assigning task " + task + " to worker " + worker);
+								assignWorkerTask(worker, task);
 							}
 							// Otherwise, ignore the task for now
 						}
@@ -213,47 +220,71 @@ implements Watcher, AsyncCallback.ChildrenCallback
 					// The master may receive a worker
 					else if (context.equals("workers"))
 					{
-						// TODO Search for a task to assign to this worker
+						String worker = c;
+						
+						System.out.println("DISTAPP : processing new worker : " + worker);
+						
+						// Search for a task to assign to this worker
+						List<String> tasks = zk.getChildren("/dist03/tasks", false);
+						String chosenTask = null;
+						
+						for (String task : tasks)
+						{
+							// Check whether the task is in progress
+							if (!taskIsInProgress(task))
+							{
+								// If it isn't, select it
+								chosenTask = task;
+								break;
+							}
+						}
+						
+						// If a free task exists, assign it to the worker
+						if (chosenTask != null) assignWorkerTask(worker, chosenTask);
+						
+						// Otherwise, ignore the worker for now
 					}
 				}
 				else {
 					// Worker process
-					// There is quite a bit of worker specific activities here,
-					// that should be moved done by a process function as the worker.
 					
-					
-					// TODO edit this section to match our new design
-					// Especially, run dt.compute() in a new thread
-					
-					
-					if (!pinfo.equals(c)) continue;	
-					
-					List<String> tasksList = zk.getChildren("/dist03/assign/"+c, false);
-
-					if (tasksList != null && !tasksList.isEmpty()) {
-						System.out.println("OK!");
-						// get the data using an async version of the API.
-						byte[] taskSerial = zk.getData("/dist03/assign/"+c+"/"+tasksList.get(0), false, null);	
-							
-						// Re-construct our task object.
-						ByteArrayInputStream bis = new ByteArrayInputStream(taskSerial);
-						ObjectInput in = new ObjectInputStream(bis);
-						DistTask dt = (DistTask) in.readObject();	
-
-						//Execute the task.
-						dt.compute();	
+					// Workers receive assignments for them
+					if (context.equals("assign"))
+					{
+						String task= c;
 						
-						// Serialize our Task object back to a byte array!
-						ByteArrayOutputStream bos = new ByteArrayOutputStream();
-						ObjectOutputStream oos = new ObjectOutputStream(bos);
-						oos.writeObject(dt); oos.flush();
-						taskSerial = bos.toByteArray();	
+						System.out.println("DISTAPP : received new task assignment : " + task);
+						
+						// Execute the expensive computation in a new thread
+	                    new Thread(() -> {
+	                    	
+	                    	// Get the data for the task
+							byte[] taskSerial = zk.getData("/dist03/assign/"+pinfo+"/"+c, false, null);
 							
-						// Store it inside the result node.
-						zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-						//zk.create("/dist03/tasks/"+c+"/result", ("Hello from "+pinfo).getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-						zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-					}	
+							// Re-construct our task object
+							ByteArrayInputStream bis = new ByteArrayInputStream(taskSerial);
+							ObjectInput in = new ObjectInputStream(bis);
+							DistTask dt = (DistTask) in.readObject();
+	                    	
+	                    	dt.compute();
+	                    	
+	                    	// Serialize our Task object back to a byte array!
+							ByteArrayOutputStream bos = new ByteArrayOutputStream();
+							ObjectOutputStream oos = new ObjectOutputStream(bos);
+							oos.writeObject(dt); oos.flush();
+							taskSerial = bos.toByteArray();	
+								
+							// Store it inside the result node.
+							zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+							
+							// Delete the task assignment
+							zk.delete("/dist03/assign/"+pinfo+"/"+task, -1);
+							zk.delete("/dist03/assign/"+pinfo, -1);
+
+							// Re-add this worker to the list of available workers
+							zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+                        });
+					}
 				}
 
 
@@ -266,14 +297,13 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		}
 	}
 	
-	// Assigns a task to the given worker
-	private void assignTask(String worker, String task)
+	// Returns whether a given task is currently in progress
+	private boolean taskIsInProgress(String task)
 	{
-		// TODO
-		// It will remove this znode from " workers ", to represent that the worker is no longer available, and will assign the
-		// task to this worker by creating a znode for the worker under " assign ", and a znode under this one which is
-		// a copy of the task znode. It will also flag the task as in-progress by giving it an " in-progress " child (to the
-		// copy that is under " tasks ").
+		List<String> taskChildren = zk.getChildren("/dist03/tasks/"+task, false);
+		
+		for (String child : taskChildren) if (child.equals("in-progress")) return true;
+		return false;
 	}
 
 	public static void main(String args[]) throws Exception
