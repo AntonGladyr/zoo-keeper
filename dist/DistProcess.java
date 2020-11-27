@@ -190,11 +190,8 @@ implements Watcher, AsyncCallback.ChildrenCallback
 					}
 					
 					catch (KeeperException ke) { System.out.println("EXCEPT: "+ke); continue; }
-					
-					System.out.println(tasksList.get(0));
 
-					if (tasksList != null && !tasksList.isEmpty()) {
-						System.out.println("OK!");
+					if (tasksList != null && !tasksList.isEmpty()) {	
 						// get the data using an async version of the API.
 						byte[] taskSerial = zk.getData("/dist03/assign/"+pinfo+"/"+c, false, null);	
 							
