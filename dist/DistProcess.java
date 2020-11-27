@@ -107,7 +107,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 	// Assigns a task to the given worker
 	void assignWorkerTask(String worker, String task) throws UnknownHostException, KeeperException, InterruptedException
 	{
-		System.out.println("DISTAPP : assigning task : " + task + " to worker " + worker);
+		System.out.println("assignWorkerTask : assigning " + task + " to worker " + worker);
 		
 		byte[] taskSerial = zk.getData("/dist03/tasks/"+task, false, null);
 	
@@ -122,9 +122,9 @@ implements Watcher, AsyncCallback.ChildrenCallback
 			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 			
 			// Mark the node as in-progress under "tasks"
-			zk.create("/dist03/tasks/"+task, "in-progress".getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+			zk.create("/dist03/tasks/"+task+"/in-progress", null, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 			
-			System.out.println("DISTAPP : task assigned");
+			System.out.println("assignWorkerTask : task assigned");
 		}
 	}
 
@@ -186,6 +186,8 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		// Convert the context to a string
 		String context = (String) ctx;
 		
+		if (children == null) return;
+		
 		for(String c: children)
 		{
 			System.out.println(c);
@@ -211,7 +213,7 @@ implements Watcher, AsyncCallback.ChildrenCallback
 							{
 								// If a worker is available, assign the task to it
 								String worker = workers.get(0);
-								System.out.println("DISTAPP : assigning task " + task + " to worker " + worker);
+								System.out.println("DISTAPP : assigning " + task + " to worker " + worker);
 								assignWorkerTask(worker, task);
 							}
 							// Otherwise, ignore the task for now
