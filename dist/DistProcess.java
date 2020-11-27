@@ -97,8 +97,8 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		// Filter out and go over only the newly created task znodes.	
 		// if data not empty	
 		if (taskSerial != null && taskSerial.length != 0) {
-			zk.delete("/dist03/workers/"+worker, -1);	
-			//zk.create("/dist03/assign/"+worker, worker.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);	
+			zk.delete("/dist03/workers/"+worker, -1);
+			//zk.create("/dist03/assign/"+worker, worker.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 			zk.setData("/dist03/tasks/"+task, null, -1);	
 			zk.create("/dist03/assign/"+worker+"/"+task, taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);	
 		}
@@ -149,10 +149,10 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		// This logic is for master !!
 		//Every time a new task znode is created by the client, this will be invoked.
 
-		// TODO: Filter out and go over only the newly created task znodes.
-		//		Also have a mechanism to assign these tasks to a "Worker" process.
-		//		The worker must invoke the "compute" function of the Task send by the client.
-		//What to do if you do not have a free worker process?
+		// Filter out and go over only the newly created task znodes.
+		// Also have a mechanism to assign these tasks to a "Worker" process.
+		// The worker must invoke the "compute" function of the Task send by the client.
+		// What to do if you do not have a free worker process?
 		System.out.println("DISTAPP : processResult : " + rc + ":" + path + ":" + ctx);
 		for(String c: children)
 		{
@@ -190,11 +190,8 @@ implements Watcher, AsyncCallback.ChildrenCallback
 					}
 					
 					catch (KeeperException ke) { System.out.println("EXCEPT: "+ke); continue; }
-					
-					System.out.println(tasksList.get(0));
 
-					if (tasksList != null && !tasksList.isEmpty()) {
-						System.out.println("OK!");
+					if (tasksList != null && !tasksList.isEmpty()) {	
 						// get the data using an async version of the API.
 						byte[] taskSerial = zk.getData("/dist03/assign/"+pinfo+"/"+c, false, null);	
 							
@@ -215,7 +212,9 @@ implements Watcher, AsyncCallback.ChildrenCallback
 						// Store it inside the result node.
 						zk.create("/dist03/tasks/"+c+"/result", taskSerial, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 						//zk.create("/distXX/tasks/"+c+"/result", ("Hello from "+pinfo).getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-						zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+						zk.create("/dist03/workers/"+pinfo, pinfo.getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+						// delete the task
+						zk.delete("/dist03/assign/"+pinfo+"/"+c, -1);
 					}
 				}
 
