@@ -228,12 +228,29 @@ implements Watcher, AsyncCallback.ChildrenCallback
 		}
 	}
 
+	public void shutdown() throws UnknownHostException, KeeperException, InterruptedException
+	{
+		zk.delete("/dist03/assign/"+pinfo, -1);
+	}
+
 	public static void main(String args[]) throws Exception
 	{
 		//Create a new process
 		//Read the ZooKeeper ensemble information from the environment variable.
 		DistProcess dt = new DistProcess(System.getenv("ZKSERVER"));
 		dt.startProcess();
+
+		// shutdown hook
+		Runtime.getRuntime().addShutdownHook(new Thread() {
+			public void run() {
+				try{
+					dt.shutdown();
+				}
+				catch(UnknownHostException uhe) {}
+				catch(KeeperException ke) {}
+				catch(InterruptedException ie) {}
+			}
+		});
 
 		//Replace this with an approach that will make sure that the process is up and running forever.
 		//Thread.sleep(10000);
